@@ -1,0 +1,59 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Arquivos de ambiente
+.env
+.env.local
+.env.*.local
+
+# Sessões e dados sensíveis
+session.json
+cookies.json
+
+# Output e resultados
+output/*.json
+output/*.csv
+
+# Logs
+logs/
+*.log
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs e Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Temporários
+tmp/
+temp/
+*.tmp
+
+# Build
+dist/
+build/
+
+# Testes
+coverage/
+.nyc_output/
+
+# Puppeteer
+.local-chromium/
+
+# Outros
+*.bak
+*.backup
+
