@@ -2,10 +2,12 @@
     "name": "ig-puppeteer-scraper",
     "version": "1.0.0",
     "type": "module",
-    "scripts": {
-      "start": "node scraper.js",
-      "server": "node server.js"
-    },
+  "scripts": {
+    "start": "node scraper.js",
+    "server": "node server.js",
+    "setup:linux": "bash install-deps.sh",
+    "setup:codespaces": "bash install-deps.sh && npm install"
+  },
     "dependencies": {
       "puppeteer": "^20.0.0",
       "puppeteer-extra": "^3.3.4",

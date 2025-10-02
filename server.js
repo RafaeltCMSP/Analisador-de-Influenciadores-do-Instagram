@@ -72,8 +72,9 @@ async function loadSession(page) {
     const session = JSON.parse(await fs.readFile(SESSION_FILE, "utf8"));
     if (session.cookies) await page.setCookie(...session.cookies);
     if (session.localStorage) {
-      const origin = await page.evaluate(() => location.origin);
-      await page.goto(origin, { waitUntil: "domcontentloaded" }).catch(() => {});
+      // Primeiro navegar para o Instagram para ter um contexto válido
+      await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded" }).catch(() => {});
+      // Agora podemos acessar localStorage com segurança
       await page.evaluate((ls) => {
         for (const [k, v] of Object.entries(ls)) localStorage.setItem(k, v);
       }, session.localStorage);
@@ -371,31 +372,107 @@ Forneça uma análise estruturada em JSON com os seguintes campos:
     ws.send(JSON.stringify({ type: "profile", data: profileData }));
 
     // Coletar links dos posts
-    ws.send(JSON.stringify({ type: "status", message: "Coletando posts..." }));
+    ws.send(JSON.stringify({ type: "status", message: `Coletando posts (alvo: ${maxPosts})...` }));
 
     const postLinks = new Set();
     let attempts = 0;
     let lastHeight = 0;
+    let consecutiveNoChange = 0;
 
-    while (postLinks.size < maxPosts && attempts < 30) {
+    while (postLinks.size < maxPosts && attempts < 60) {
+      // Coletar APENAS links de posts e reels, removendo query params
       const links = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll("article a[href*='/p/']"))
-          .map((a) => a.href)
+        return Array.from(document.querySelectorAll("article a[href*='/p/'], article a[href*='/reel/']"))
+          .map((a) => {
+            // Remover query params para evitar duplicatas
+            return a.href.split('?')[0];
+          })
           .filter(Boolean);
       });
 
+      const sizeBefore = postLinks.size;
       links.forEach((l) => postLinks.add(l));
-      await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-      await humanDelay(1);
+      const sizeAfter = postLinks.size;
+      
+      const newPosts = sizeAfter - sizeBefore;
+      console.log(`[Crawl] Tentativa ${attempts + 1}: ${sizeAfter}/${maxPosts} posts (+${newPosts} novos)`);
+      
+      // Atualizar progresso no WebSocket
+      ws.send(JSON.stringify({ 
+        type: "status", 
+        message: `Coletando posts: ${sizeAfter}/${maxPosts}...` 
+      }));
+
+      // Se já temos posts suficientes, parar
+      if (postLinks.size >= maxPosts) {
+        console.log(`[Crawl] ✓ Meta atingida: ${postLinks.size} posts`);
+        break;
+      }
+
+      // Scroll mais agressivo
+      await page.evaluate(() => {
+        window.scrollBy(0, window.innerHeight * 1.5);
+      });
+      await humanDelay(1.5);
 
       const newHeight = await page.evaluate(() => document.body.scrollHeight);
-      if (newHeight === lastHeight) attempts++;
-      else attempts = 0;
+      
+      if (newHeight === lastHeight) {
+        consecutiveNoChange++;
+        
+        // Tentar forçar carregamento de mais posts
+        if (consecutiveNoChange === 3) {
+          console.log(`[Crawl] Scroll extra para forçar lazy loading...`);
+          await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+          await humanDelay(3);
+        } else if (consecutiveNoChange === 6) {
+          console.log(`[Crawl] Scroll agressivo...`);
+          await page.evaluate(() => {
+            window.scrollTo(0, document.body.scrollHeight);
+            window.scrollBy(0, -100);
+            window.scrollBy(0, 100);
+          });
+          await humanDelay(4);
+        }
+        
+        // Se não mudou por muito tempo E não coletou novos posts, parar
+        if (consecutiveNoChange >= 10 && newPosts === 0) {
+          console.log(`[Crawl] ⚠ Sem mais posts disponíveis após ${attempts + 1} tentativas. Total: ${postLinks.size}`);
+          break;
+        }
+      } else {
+        consecutiveNoChange = 0;
+      }
+      
       lastHeight = newHeight;
+      attempts++;
     }
 
-    const linkArray = Array.from(postLinks).slice(0, maxPosts);
-    ws.send(JSON.stringify({ type: "status", message: `Encontrados ${linkArray.length} posts` }));
+    // Filtrar e validar links antes de processar
+    const linkArray = Array.from(postLinks)
+      .filter(link => link.includes('/p/') || link.includes('/reel/'))
+      .slice(0, maxPosts);
+    
+    console.log(`\n========================================`);
+    console.log(`[CRAWL SUMMARY]`);
+    console.log(`  Solicitado: ${maxPosts} posts`);
+    console.log(`  Coletados: ${linkArray.length} posts`);
+    console.log(`  Tentativas: ${attempts}`);
+    console.log(`  Status: ${linkArray.length >= maxPosts ? '✓ SUCESSO' : '⚠ PARCIAL'}`);
+    console.log(`========================================\n`);
+    
+    if (linkArray.length < maxPosts) {
+      console.warn(`[Crawl] ⚠ AVISO: Perfil tem menos posts disponíveis ou Instagram limitou o carregamento`);
+      ws.send(JSON.stringify({ 
+        type: "status", 
+        message: `⚠ ${linkArray.length}/${maxPosts} posts coletados. Iniciando análise...` 
+      }));
+    } else {
+      ws.send(JSON.stringify({ 
+        type: "status", 
+        message: `✓ ${linkArray.length} posts coletados! Iniciando análise...` 
+      }));
+    }
 
     // Array para armazenar posts analisados
     const scraped = [];

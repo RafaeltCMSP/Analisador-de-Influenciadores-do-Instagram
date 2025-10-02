@@ -62,10 +62,9 @@ async function loadSession(page) {
       await page.setCookie(...session.cookies);
     }
     if (session.localStorage) {
-      // restore localStorage by evaluating on the page origin
-      const origin = await page.evaluate(() => location.origin);
-      // navigate to origin to allow setting localStorage
-      await page.goto(origin, { waitUntil: "domcontentloaded" }).catch(() => {});
+      // Primeiro navegar para o Instagram para ter um contexto válido
+      await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded" }).catch(() => {});
+      // Agora podemos acessar localStorage com segurança
       await page.evaluate((ls) => {
         for (const [k, v] of Object.entries(ls)) localStorage.setItem(k, v);
       }, session.localStorage);
@@ -300,28 +299,90 @@ async function run() {
   const postLinks = new Set();
   let lastHeight = 0;
   let attempts = 0;
-  console.log("[crawl] starting to scroll and collect post links");
-  while (postLinks.size < MAX_POSTS && attempts < 30) {
-    // collect visible links
+  let consecutiveNoChange = 0;
+  
+  console.log(`[crawl] starting to scroll and collect post links (target: ${MAX_POSTS})`);
+  
+  while (postLinks.size < MAX_POSTS && attempts < 60) {
+    // Coletar APENAS links de posts (contém /p/ e /reel/)
     const links = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll("article a"))
-        .map(a => a.href)
+      return Array.from(document.querySelectorAll("article a[href*='/p/'], article a[href*='/reel/']"))
+        .map(a => {
+          // Remover query params para evitar duplicatas
+          return a.href.split('?')[0];
+        })
         .filter(Boolean);
     });
 
+    const sizeBefore = postLinks.size;
     links.forEach((l) => postLinks.add(l));
-    // scroll down
-    await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-    await humanDelay(1);
-    // check height to avoid infinite loop
+    const sizeAfter = postLinks.size;
+    
+    const newPosts = sizeAfter - sizeBefore;
+    console.log(`[crawl] attempt ${attempts + 1}: ${sizeAfter}/${MAX_POSTS} posts collected (+${newPosts} new)`);
+
+    // Se já temos posts suficientes, parar
+    if (postLinks.size >= MAX_POSTS) {
+      console.log(`[crawl] ✓ target reached: ${postLinks.size} posts`);
+      break;
+    }
+
+    // Scroll mais agressivo
+    await page.evaluate(() => {
+      window.scrollBy(0, window.innerHeight * 1.5);
+    });
+    await humanDelay(1.5);
+
+    // Verificar mudança de altura
     const newHeight = await page.evaluate(() => document.body.scrollHeight);
-    if (newHeight === lastHeight) attempts++;
-    else attempts = 0;
+    
+    if (newHeight === lastHeight) {
+      consecutiveNoChange++;
+      
+      // Se não mudou por algumas tentativas, fazer scroll extra e esperar mais
+      if (consecutiveNoChange === 3) {
+        console.log(`[crawl] trying extra scroll to trigger lazy loading...`);
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await humanDelay(3);
+      } else if (consecutiveNoChange === 6) {
+        console.log(`[crawl] forcing aggressive scroll...`);
+        await page.evaluate(() => {
+          window.scrollTo(0, document.body.scrollHeight);
+          window.scrollBy(0, -100);
+          window.scrollBy(0, 100);
+        });
+        await humanDelay(4);
+      }
+      
+      // Se não mudou por muito tempo E não coletou novos posts, parar
+      if (consecutiveNoChange >= 10 && newPosts === 0) {
+        console.log(`[crawl] ⚠ no more posts available after ${attempts + 1} attempts. Total: ${postLinks.size}`);
+        break;
+      }
+    } else {
+      consecutiveNoChange = 0;
+    }
+    
     lastHeight = newHeight;
+    attempts++;
   }
 
-  const linkArray = Array.from(postLinks).slice(0, MAX_POSTS);
-  console.log(`[crawl] collected ${linkArray.length} posts (requested ${MAX_POSTS})`);
+  // Filtrar e validar links antes de processar
+  const linkArray = Array.from(postLinks)
+    .filter(link => link.includes('/p/') || link.includes('/reel/'))
+    .slice(0, MAX_POSTS);
+  
+  console.log(`\n========================================`);
+  console.log(`[CRAWL SUMMARY]`);
+  console.log(`  Requested: ${MAX_POSTS} posts`);
+  console.log(`  Collected: ${linkArray.length} posts`);
+  console.log(`  Attempts: ${attempts}`);
+  console.log(`  Status: ${linkArray.length >= MAX_POSTS ? '✓ SUCCESS' : '⚠ PARTIAL'}`);
+  
+  if (linkArray.length < MAX_POSTS) {
+    console.warn(`  ⚠ WARNING: Profile has fewer posts than requested or Instagram limited loading.`);
+  }
+  console.log(`========================================\n`);
 
   // Visit each post sequentially (safer). If quiser paralelizar, tenha proxies e sessões separadas.
   const scraped = [];

@@ -127,7 +127,30 @@ O **Analisador de Influenciadores do Instagram** é uma ferramenta profissional 
 - npm ou yarn
 - Chave de API do OpenRouter ([obtenha aqui](https://openrouter.ai/))
 
-### Passo a Passo
+### Opção 1: GitHub Codespaces (Recomendado) ☁️
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new)
+
+**Vantagens:**
+- ✅ Ambiente pré-configurado automaticamente
+- ✅ Dependências do Puppeteer já instaladas
+- ✅ Funciona em qualquer dispositivo
+- ✅ Não precisa instalar nada localmente
+
+**Passos:**
+1. Clique em **"Code"** → **"Codespaces"** → **"Create codespace on main"**
+2. Aguarde a criação do ambiente (1-2 minutos)
+3. As dependências serão instaladas automaticamente
+4. Configure o arquivo `.env` (copie de `env.example.txt`)
+5. Execute `npm run server`
+6. Acesse a porta 3000 quando for exposta
+
+> **Nota:** Se o Codespace já existir e você encontrar o erro do Puppeteer, execute:
+> ```bash
+> bash .devcontainer/setup.sh
+> ```
+
+### Opção 2: Instalação Local
 
 ```bash
 # 1. Clone o repositório
@@ -430,6 +453,30 @@ O Instagram tem limites de requisições. Recomendações:
 ---
 
 ## 🐛 Troubleshooting
+
+### Problema: Erro no GitHub Codespaces (Puppeteer)
+**Sintomas:** `Failed to launch the browser process! libatk-1.0.so.0: cannot open shared object file`
+
+**Causa:** Dependências do sistema Linux faltando
+
+**Solução:**
+```bash
+# Execute o script de setup
+bash .devcontainer/setup.sh
+
+# Ou instale manualmente
+sudo apt-get update && sudo apt-get install -y \
+  ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 \
+  libatk1.0-0 libcairo2 libcups2 libdbus-1-3 libgbm1 libgtk-3-0 \
+  libnspr4 libnss3 libx11-6 libx11-xcb1 libxcomposite1 libxcursor1 \
+  libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 \
+  libxss1 libxtst6 xdg-utils wget
+
+# Depois reinstale as dependências do projeto
+npm install
+```
+
+**Dica:** Se você criar o Codespace pela primeira vez, ele instalará automaticamente as dependências através do `devcontainer.json`.
 
 ### Problema: Erro de Conexão WebSocket
 **Sintomas:** Frontend não conecta ao backend
