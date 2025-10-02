@@ -25,7 +25,16 @@ app.use(express.static("public"));
 
 // Configurações
 const SESSION_FILE = process.env.SESSION_FILE || "./session.json";
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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";
+
+// Validar variáveis de ambiente obrigatórias
+if (!process.env.OPENROUTER_API_KEY) {
+  console.error("❌ ERRO: OPENROUTER_API_KEY não está definida!");
+  console.error("📝 Por favor, crie um arquivo .env baseado no env.example.txt");
+  console.error("   e adicione sua chave da OpenRouter API.");
+  process.exit(1);
+}
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat-v3.1:free";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
